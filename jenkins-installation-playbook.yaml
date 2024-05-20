@@ -1,0 +1,141 @@
+---
+- name: Install Jenkins on AWS EC2
+  hosts: jenkins_server
+  become: true
+  vars:
+    ansible_user: ec2-user
+    ansible_ssh_private_key_file: /Users/danielgutierrez/Documents/jenkins/pem_aws_ec2/terraform_jenkins.pem
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    
+  tasks:
+    - name: yum update
+      ansible.builtin.yum:
+        name: '*'
+        state: latest
+
+    # - name: Install java
+    #   shell: "sudo amazon-linux-extras install java-openjdk11"
+
+    # - name: Install java
+    #   ansible.builtin.yum:
+    #     name:  java-11-openjdk-devel
+    #     state: present
+
+    - name: Download Java 21
+      get_url:
+        url: https://download.java.net/java/GA/jdk21/fd2272bbf8e04c3dbaee13770090416c/35/GPL/openjdk-21_linux-x64_bin.tar.gz
+        dest: /tmp/openjdk-21_linux-x64_bin.tar.gz
+
+    - name: Extract Java 21
+      ansible.builtin.unarchive:
+        src: /tmp/openjdk-21_linux-x64_bin.tar.gz
+        dest: /opt/
+        remote_src: yes
+      become: true
+
+    - name: Install Java using yum
+      become: true
+      ansible.builtin.yum:
+        name: java
+        state: present
+
+    - name: Download Maven 3.9.4
+      get_url:
+        url: https://dlcdn.apache.org/maven/maven-3/3.9.4/binaries/apache-maven-3.9.4-bin.tar.gz
+        dest: /tmp/apache-maven-3.8.3-bin.tar.gz
+
+    - name: Extract Maven 3.8.3
+      ansible.builtin.unarchive:
+        src: /tmp/apache-maven-3.8.3-bin.tar.gz
+        dest: /opt/
+        remote_src: yes
+      become: true
+
+    # - name: Set Java and Maven Environment Variables
+    #   ansible.builtin.lineinfile:
+    #     path: ~/.bashrc
+    #     line: |
+    #       JAVA_HOME=/opt/jdk-21
+    #       export PATH=$JAVA_HOME/bin:$PATH
+    #       M2_HOME=/opt/apache-maven-3.9.4
+    #       export PATH=$M2_HOME/bin:$PATH
+    #   become: false
+
+    # - name: Load environment variables from ~/.bashrc
+    #   ansible.builtin.shell:
+    #     cmd: source ~/.bashrc
+    #     executable: /bin/bash
+
+    - name: Install Git
+      ansible.builtin.yum:
+        name: git
+        state: present
+
+    - name: Download jenkins.repo
+      get_url:
+        url: http://pkg.jenkins-ci.org/redhat-stable/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+    
+    # - name: Import jenkins key from url
+    #   ansible.builtin.rpm_key:
+    #     key: https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+    #     state: present
+
+    # - name: Install Jenkins package
+    #   ansible.builtin.yum:
+    #     name: jenkins
+    #     state: present
+
+    - name: Install Jenkins without GPG verification
+      ansible.builtin.shell:
+        cmd: yum install -y jenkins --nogpgcheck
+
+    - name: Start & Enable Jenkins
+      ansible.builtin.service:
+        name: jenkins
+        state: started
+        enabled: true
+ 
+    - name: Install Google Chrome
+      become: true
+      ansible.builtin.yum:
+        name: 'https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm'
+        state: present
+
+    - name: Sleep for 20 seconds and continue with play
+      wait_for: timeout=20
+ 
+    - name: Get initial Admin Password
+      shell: cat /var/lib/jenkins/secrets/initialAdminPassword
+      changed_when: false
+      register: result
+
+    - name: Print initial Admin Password
+      debug:
+        var: result.stdout
+ 
+    - name: Register Java 21 as default using alternatives
+      become: true
+      ansible.builtin.shell: |
+        update-alternatives --install /usr/bin/java java /opt/jdk-21/bin/java 100
+        update-alternatives --config java <<< '2'
+
+    - name: Set Java and Maven Environment Variables
+      ansible.builtin.lineinfile:
+        path: ~/.bashrc
+        line: |
+          M2_HOME=/opt/apache-maven-3.9.4
+          export PATH=$M2_HOME/bin:$PATH
+      become: false
+
+    - name: Load environment variables from ~/.bashrc
+      ansible.builtin.shell:
+        cmd: source ~/.bashrc
+        executable: /bin/bash
+
+    - name: Restart Jenkins service
+      become: true
+      ansible.builtin.service:
+        name: jenkins
+        state: restarted
+        enabled: true
