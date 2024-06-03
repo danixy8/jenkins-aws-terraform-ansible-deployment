@@ -1,11 +1,10 @@
-#!/bin/bash
+# !/bin/bash
 
 terraform apply -auto-approve
 terraform_exit_code=$?
 
 if [ $terraform_exit_code -eq 0 ]; then
     echo "Terraform apply completed successfully."
-    cd ..
     retries=5 
     while [ $retries -gt 0 ]; do
 	sleep 2
